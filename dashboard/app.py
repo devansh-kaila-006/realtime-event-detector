@@ -8,6 +8,8 @@ import pandas as pd
 from pymongo import MongoClient
 from collections import Counter
 import plotly.express as px
+import re
+import ast
 from streamlit_autorefresh import st_autorefresh
 import json
 import sys
@@ -68,6 +70,44 @@ STOPWORDS = {
     "edit", "page", "article", "updated"
 }
 
+
+def extract_source_url(event: dict):
+    """Extract best available source/article URL from event payload."""
+    def pick_url(payload):
+        if not isinstance(payload, dict):
+            return None
+        for key in ("url", "source_url", "link", "sourceUrl"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.startswith(("http://", "https://")):
+                return value
+        return None
+
+    direct = pick_url(event)
+    if direct:
+        return direct
+
+    raw_data = event.get("raw_data")
+    if isinstance(raw_data, dict):
+        return pick_url(raw_data)
+    if isinstance(raw_data, str) and raw_data.strip():
+        raw = raw_data.strip()
+        try:
+            parsed = json.loads(raw)
+            url = pick_url(parsed)
+            if url:
+                return url
+        except Exception:
+            pass
+        try:
+            parsed = ast.literal_eval(raw)
+            url = pick_url(parsed)
+            if url:
+                return url
+        except Exception:
+            pass
+
+    return None
+
 # ============================================================
 # INITIALIZE SESSION STATE
 # ============================================================
@@ -82,18 +122,12 @@ st.markdown(f"<h1>{ICONS['analytics']} Event Detection Analytics Dashboard</h1>"
 st.markdown("---")
 
 # Auto-refresh
-count = st_autorefresh(interval=st.session_state.get('refresh_interval', 6) * 1000, limit=None, key="refresh")
+st_autorefresh(interval=6000, limit=None, key="refresh")
 
 # Control Panel - All filters visible in main area
 with st.expander("🎛️ Control Panel & Filters", expanded=True):
     # Basic controls
-    col1, col2 = st.columns(2)
-    with col1:
-        refresh_interval = st.slider("Refresh interval (sec)", 3, 30, 6)
-        st.session_state['refresh_interval'] = refresh_interval
-
-    with col2:
-        event_limit = st.selectbox("Total events to load", [50, 100, 200, 500], index=0)
+    event_limit = st.selectbox("Total events to load", [50, 100, 200, 500], index=0)
 
     st.markdown("---")
 
@@ -288,13 +322,18 @@ with tab1:
         # Time series chart
         st.markdown(f"<h4>{ICONS['chart']} Event Trends (24 Hours)</h4>", unsafe_allow_html=True)
 
-        time_series_data = data_helpers.get_event_time_series_data(hours=24)
+        time_series_data = data_helpers.get_event_time_series_data(
+            hours=24,
+            source_filter=st.session_state.filters.get('sources'),
+            date_range=st.session_state.filters.get('date_range')
+        )
 
         if time_series_data:
             df_time = pd.DataFrame(time_series_data)
             df_time['date'] = df_time['_id'].apply(lambda x: x['date'])
             df_time['source'] = df_time['_id'].apply(lambda x: x['source'])
             df_time['count'] = df_time['count']
+            df_time['source'] = df_time['source'].replace({'wiki': 'wikipedia'})
 
             fig_time = px.line(
                 df_time,
@@ -399,56 +438,210 @@ with tab2:
 with tab3:
     st.markdown(f"<h3>{ICONS['map']} Geographic Event Intelligence</h3>", unsafe_allow_html=True)
 
-    # Get events with coordinates
-    geo_events = [e for e in filtered_events if e.get('latitude') and e.get('longitude')]
+    COUNTRY_COORDS = {
+        "australia": (-25.2744, 133.7751),
+        "russia": (61.5240, 105.3188),
+        "russian federation": (61.5240, 105.3188),
+        "mexico": (23.6345, -102.5528),
+        "united states": (39.7837, -100.4459),
+        "china": (35.8617, 104.1954),
+        "indonesia": (-0.7893, 113.9213),
+        "ethiopia": (9.1450, 40.4897),
+        "sudan": (12.8628, 30.2176),
+        "chile": (-35.6751, -71.5430),
+        "papua new guinea": (-6.3150, 143.9555),
+        "japan": (36.2048, 138.2529),
+        "india": (20.5937, 78.9629),
+        "argentina": (-38.4161, -63.6167),
+        "brazil": (-14.2350, -51.9253),
+        "madagascar": (-18.7669, 46.8691),
+    }
+    SOURCE_CENTROIDS = {
+        "wikipedia": (48.8566, 2.3522),
+        "wiki": (48.8566, 2.3522),
+        "news": (40.7128, -74.0060),
+        "gdacs": (0.0, 20.0),
+        "financial": (35.6762, 139.6503),
+    }
 
-    if geo_events:
-        st.markdown(f"<div class='stAlert st-bc'>{ICONS['pin']} Showing {len(geo_events)} events with location data</div>", unsafe_allow_html=True)
+    def infer_country_coordinates(title: str):
+        if not title:
+            return None, None
+        title_lower = title.strip().lower()
+        for country in sorted(COUNTRY_COORDS.keys(), key=len, reverse=True):
+            if country in title_lower:
+                return COUNTRY_COORDS[country]
+        return None, None
 
-        # Create map data
-        map_data = []
-        for event in geo_events:
-            map_data.append({
-                'lat': float(event['latitude']),
-                'lon': float(event['longitude']),
-                'title': event.get('title', 'Unknown')[:30],
-                'source': event.get('source_type', 'unknown'),
-                'cluster': event.get('event_cluster', 'general')
-            })
+    # Build map dataframe with robust coordinate parsing
+    map_data = []
+    inferred_points = 0
+    for event in filtered_events:
+        lat_raw = event.get('latitude')
+        lon_raw = event.get('longitude')
+        try:
+            lat = None
+            lon = None
+            if lat_raw is not None and lon_raw is not None:
+                lat = float(lat_raw)
+                lon = float(lon_raw)
+                if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                    lat, lon = None, None
 
-        df_map = pd.DataFrame(map_data)
+            if lat is None or lon is None:
+                lat, lon = infer_country_coordinates(event.get('title', ''))
+                if lat is not None and lon is not None:
+                    inferred_points += 1
 
-        # Color by source
-        color_map = {
-            'wikipedia': 'blue',
-            'news': 'green',
-            'gdacs': 'red',
-            'financial': 'orange'
-        }
+            if lat is None or lon is None:
+                continue
+        except (TypeError, ValueError):
+            continue
 
-        st.map(df_map, latitude='lat', longitude='lon', size='lat', color='source')
+        map_data.append({
+            'lat': lat,
+            'lon': lon,
+            'title': event.get('title', 'Unknown')[:60],
+            'source': event.get('source_type', 'unknown'),
+            'cluster': event.get('event_cluster', 'general'),
+            'weight': 1
+        })
 
-        # Geographic statistics
-        st.markdown(f"<h4>{ICONS['map']} Geographic Statistics</h4>", unsafe_allow_html=True)
+    df_map = pd.DataFrame(map_data)
 
-        # Count events by location
-        location_counts = Counter()
-        for event in geo_events:
-            try:
-                entities = json.loads(event.get('entities', '{}'))
-                for loc in entities.get('locations', [])[:3]:
-                    location_counts[loc] += 1
-            except:
-                pass
+    if not df_map.empty:
+        st.markdown(f"<div class='stAlert st-bc'>{ICONS['pin']} Showing {len(df_map)} events with location data</div>", unsafe_allow_html=True)
+        if inferred_points > 0:
+            st.caption(f"Using inferred country coordinates for {inferred_points} event(s) without explicit latitude/longitude.")
 
-        if location_counts:
-            st.subheader("Top Locations")
-            top_locations = location_counts.most_common(10)
-            for loc, count in top_locations:
-                st.write(f"**{loc}**: {count} events")
+        col_map, col_heat = st.columns(2)
+
+        with col_map:
+            fig_geo = px.scatter_geo(
+                df_map,
+                lat='lat',
+                lon='lon',
+                color='source',
+                hover_name='title',
+                projection='natural earth',
+                title='World Event Map'
+            )
+            fig_geo.update_geos(showland=True, landcolor='#0f172a', showcountries=True, countrycolor='#334155')
+            fig_geo.update_layout(margin=dict(l=10, r=10, t=40, b=10))
+            st.plotly_chart(fig_geo, use_container_width=True)
+
+        with col_heat:
+            fig_heat = px.density_mapbox(
+                df_map,
+                lat='lat',
+                lon='lon',
+                z='weight',
+                radius=22,
+                zoom=0,
+                center=dict(lat=15, lon=0),
+                mapbox_style='carto-positron',
+                title='Global Event Heatmap'
+            )
+            fig_heat.update_layout(margin=dict(l=10, r=10, t=40, b=10))
+            st.plotly_chart(fig_heat, use_container_width=True)
     else:
+        # Always show a world map frame, even when there is no geo data.
+        fig_geo = px.scatter_geo(lat=[], lon=[], projection='natural earth', title='World Event Map')
+        fig_geo.update_geos(showland=True, landcolor='#0f172a', showcountries=True, countrycolor='#334155')
+        fig_geo.update_layout(margin=dict(l=10, r=10, t=40, b=10))
+        col_map, col_heat = st.columns(2)
+        with col_map:
+            st.plotly_chart(fig_geo, use_container_width=True)
+        with col_heat:
+            fallback_points = []
+            for event in filtered_events:
+                source = event.get('source_type', 'unknown')
+                if source in SOURCE_CENTROIDS:
+                    lat, lon = SOURCE_CENTROIDS[source]
+                    fallback_points.append({"lat": lat, "lon": lon, "weight": 1, "source": source})
+            if fallback_points:
+                df_fallback = pd.DataFrame(fallback_points)
+                fig_heat = px.density_mapbox(
+                    df_fallback,
+                    lat='lat',
+                    lon='lon',
+                    z='weight',
+                    radius=28,
+                    zoom=0,
+                    center=dict(lat=15, lon=0),
+                    mapbox_style='carto-positron',
+                    title='Global Event Heatmap'
+                )
+            else:
+                fig_heat = px.density_mapbox(
+                    pd.DataFrame([{"lat": 0.0, "lon": 0.0, "weight": 0}]),
+                    lat='lat',
+                    lon='lon',
+                    z='weight',
+                    radius=1,
+                    zoom=0,
+                    center=dict(lat=0, lon=0),
+                    mapbox_style='carto-positron',
+                    title='Global Event Heatmap'
+                )
+            fig_heat.update_layout(margin=dict(l=10, r=10, t=40, b=10))
+            st.plotly_chart(fig_heat, use_container_width=True)
         st.warning("No events with geographic coordinates match your current filters.")
         st.markdown(f"<div class='stAlert st-bc'>{ICONS['info']} Tip: GDACS events typically have the most location data</div>", unsafe_allow_html=True)
+
+    # Geographic statistics
+    st.markdown(f"<h4>{ICONS['map']} Geographic Statistics</h4>", unsafe_allow_html=True)
+    geo_count = len(df_map) if not df_map.empty else 0
+    total_filtered = len(filtered_events)
+    coverage_pct = (geo_count / total_filtered * 100) if total_filtered > 0 else 0
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Geo-tagged Events", geo_count)
+    c2.metric("Geo Coverage", f"{coverage_pct:.1f}%")
+    c3.metric("Inferred Coordinates", inferred_points)
+
+    col_source, col_cluster = st.columns(2)
+
+    with col_source:
+        stats_source_df = df_map if not df_map.empty else pd.DataFrame(
+            [{"source": e.get("source_type", "unknown")} for e in filtered_events]
+        )
+        if not stats_source_df.empty:
+            source_counts = (
+                stats_source_df.groupby("source", as_index=False)
+                .size()
+                .rename(columns={"size": "count"})
+                .sort_values("count", ascending=False)
+            )
+            fig_source = px.bar(
+                source_counts,
+                x="source",
+                y="count",
+                title="Events by Source",
+                labels={"source": "Source", "count": "Events"}
+            )
+            fig_source.update_layout(margin=dict(l=10, r=10, t=40, b=10))
+            st.plotly_chart(fig_source, use_container_width=True)
+
+    with col_cluster:
+        stats_cluster_df = df_map if not df_map.empty else pd.DataFrame(
+            [{"cluster": e.get("event_cluster", "general")} for e in filtered_events]
+        )
+        if not stats_cluster_df.empty:
+            cluster_counts = (
+                stats_cluster_df.groupby("cluster", as_index=False)
+                .size()
+                .rename(columns={"size": "count"})
+                .sort_values("count", ascending=False)
+            )
+            fig_cluster = px.pie(
+                cluster_counts,
+                names="cluster",
+                values="count",
+                title="Events by Cluster"
+            )
+            fig_cluster.update_layout(margin=dict(l=10, r=10, t=40, b=10))
+            st.plotly_chart(fig_cluster, use_container_width=True)
 
 # ============================================================
 # TAB 4: EVENT EXPLORER
@@ -486,7 +679,7 @@ with tab4:
         for i, event in enumerate(filtered_events[:5]):
             # Create clickable title with source link
             title = event.get('title', 'Unknown Event')[:60]
-            url = event.get('url', event.get('link', ''))
+            url = extract_source_url(event)
 
             if url:
                 display_title = f"🔗 [{title}...]({url})"
@@ -635,7 +828,7 @@ with tab5:
     for event in page_events:
         # Create clickable title with source link
         title = event.get('title', 'Unknown Event')
-        url = event.get('url', event.get('link', ''))
+        url = extract_source_url(event)
 
         if url:
             # Make title clickable if URL is available

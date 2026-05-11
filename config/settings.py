@@ -12,7 +12,7 @@ MONGO_COLLECTION_KEYWORDS = "keywords"
 SPARK_APP_NAME = "RealTimeGlobalEventDetector"
 SPARK_CHECKPOINT = "C:/tmp/checkpoints"
 
-NEWS_API_KEY = "eacc259e776b4d7ca1cc2dae26bddd8d"
+NEWS_API_KEY = "aElUiLCAfamjZEGIIzlmmXT8wPJ_3awZ_Kqvl4JZJNZQDD37"
 
 # ─── Financial Data ────────────────────────────────────────────────
 FINNHUB_API_KEY = "d80jpapr01qt5k5v7tqgd80jpapr01qt5k5v7tr0"
@@ -20,7 +20,7 @@ FINNHUB_API_BASE = "https://finnhub.io/api/v1"
 
 # ─── GDACS Disaster Alerts ──────────────────────────────────────────
 GDACS_RSS_URL = "https://www.gdacs.org/XML/rss.xml"
-GDACS_UPDATE_INTERVAL = 300  # 5 minutes
+GDACS_UPDATE_INTERVAL = 30  # 30 seconds
 
 STOPWORDS = {
     "a", "an", "the", "is", "it", "in", "on", "at", "to", "for",

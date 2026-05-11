@@ -19,10 +19,29 @@ def create_sankey_diagram(events_collection):
 
     # Fetch data from MongoDB
     pipeline = [
+        {
+            "$project": {
+                "source": {
+                    "$cond": [
+                        {"$eq": ["$source_type", "wiki"]},
+                        "wikipedia",
+                        "$source_type"
+                    ]
+                },
+                "cluster": {"$ifNull": ["$event_cluster", "general"]},
+                "sentiment": {
+                    "$cond": [
+                        {"$in": ["$sentiment", ["positive", "negative", "neutral"]]},
+                        "$sentiment",
+                        "neutral"
+                    ]
+                }
+            }
+        },
         {"$group": {
             "_id": {
-                "source": "$source_type",
-                "cluster": "$event_cluster",
+                "source": "$source",
+                "cluster": "$cluster",
                 "sentiment": "$sentiment"
             },
             "count": {"$sum": 1}
@@ -48,8 +67,9 @@ def create_sankey_diagram(events_collection):
     # Create node list
     nodes = sources + clusters + sentiments
 
-    # Create links
-    links = []
+    # Create links (aggregated to avoid duplicate edges)
+    source_cluster_links = {}
+    cluster_sentiment_links = {}
 
     for d in data:
         source = d['_id']['source']
@@ -59,26 +79,35 @@ def create_sankey_diagram(events_collection):
 
         # Only add links if all components exist
         if source in sources and cluster in clusters and sentiment in sentiments:
-            # Source → Cluster link
-            source_idx = sources.index(source)
-            cluster_idx = len(sources) + clusters.index(cluster)
+            source_cluster_links[(source, cluster)] = source_cluster_links.get((source, cluster), 0) + count
+            cluster_sentiment_links[(cluster, sentiment)] = cluster_sentiment_links.get((cluster, sentiment), 0) + count
 
-            links.append({
-                'source': source_idx,
-                'target': cluster_idx,
-                'value': count,
-                'color': get_source_color(source)
-            })
+    links = []
 
-            # Cluster → Sentiment link
-            sentiment_idx = len(sources) + len(clusters) + sentiments.index(sentiment)
+    for (source, cluster), count in source_cluster_links.items():
+        source_idx = sources.index(source)
+        cluster_idx = len(sources) + clusters.index(cluster)
+        links.append({
+            'source': source_idx,
+            'target': cluster_idx,
+            'value': count,
+            'color': get_source_color(source)
+        })
 
-            links.append({
-                'source': cluster_idx,
-                'target': sentiment_idx,
-                'value': count,
-                'color': get_sentiment_color(sentiment)
-            })
+    for (cluster, sentiment), count in cluster_sentiment_links.items():
+        cluster_idx = len(sources) + clusters.index(cluster)
+        sentiment_idx = len(sources) + len(clusters) + sentiments.index(sentiment)
+        links.append({
+            'source': cluster_idx,
+            'target': sentiment_idx,
+            'value': count,
+            'color': get_sentiment_color(sentiment)
+        })
+
+    if not links:
+        fig = go.Figure()
+        fig.update_layout(title_text="No flow data available for Sankey diagram")
+        return fig
 
     # Create Sankey figure
     fig = go.Figure(data=[go.Sankey(

@@ -5,12 +5,14 @@ Polls GDACS RSS feed for disaster alerts and publishes clean JSON messages.
 
 import json
 import time
-import feedparser
+import requests
+import xml.etree.ElementTree as ET
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
-from datetime import datetime
+from datetime import datetime, timezone
 import sys
 import os
+import re
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from config.settings import (
@@ -34,9 +36,9 @@ def parse_gdacs_entry(entry) -> dict:
     """Parse GDACS RSS feed entry into structured disaster event data."""
 
     # Extract basic information
-    title = entry.get('title', '')
-    description = entry.get('description', '')
-    link = entry.get('link', '')
+    title = entry.get("title", "")
+    description = entry.get("description", "")
+    link = entry.get("link", "")
 
     # Parse disaster type and severity from title
     # GDACS title format: "Earthquake of 6.5M, Depth: 10km, Date:..."
@@ -44,12 +46,12 @@ def parse_gdacs_entry(entry) -> dict:
     severity = "unknown"
 
     title_lower = title.lower()
-    if 'earthquake' in title_lower:
+    if "earthquake" in title_lower:
         disaster_type = "earthquake"
-        # Extract magnitude if present
-        if 'M,' in title or 'magnitu' in title_lower:
+        magnitude_match = re.search(r"(\d+\.?\d*)\s*m", title_lower)
+        if magnitude_match:
             try:
-                magnitude = float(title.split('M,')[0].split()[-1])
+                magnitude = float(magnitude_match.group(1))
                 if magnitude >= 7.0:
                     severity = "extreme"
                 elif magnitude >= 6.0:
@@ -58,37 +60,22 @@ def parse_gdacs_entry(entry) -> dict:
                     severity = "moderate"
                 else:
                     severity = "low"
-            except (ValueError, IndexError):
+            except ValueError:
                 severity = "moderate"
 
-    elif 'flood' in title_lower or 'flash flood' in title_lower:
+    elif "flood" in title_lower or "flash flood" in title_lower:
         disaster_type = "flood"
         severity = "high"  # Floods are generally severe
 
-    elif 'cyclone' in title_lower or 'hurricane' in title_lower or 'typhoon' in title_lower:
+    elif "cyclone" in title_lower or "hurricane" in title_lower or "typhoon" in title_lower:
         disaster_type = "tropical_cyclone"
-        # Try to extract category
-        if 'category' in title_lower:
-            try:
-                category = int(title_lower.split('category')[1].split()[0])
-                if category >= 4:
-                    severity = "extreme"
-                elif category >= 3:
-                    severity = "high"
-                elif category >= 2:
-                    severity = "moderate"
-                else:
-                    severity = "low"
-            except (ValueError, IndexError):
-                severity = "high"
-        else:
-            severity = "high"
+        severity = "high"
 
-    elif 'volcano' in title_lower:
+    elif "volcano" in title_lower:
         disaster_type = "volcanic_eruption"
         severity = "high"
 
-    elif 'tsunami' in title_lower:
+    elif "tsunami" in title_lower:
         disaster_type = "tsunami"
         severity = "extreme"
 
@@ -98,9 +85,8 @@ def parse_gdacs_entry(entry) -> dict:
 
     # GDACS descriptions often contain lat/lon
     if description:
-        import re
         # Look for coordinate patterns
-        coord_pattern = r'(\d+\.?\d*)[°\s]+([NS])[,;\s]+(\d+\.?\d*)[°\s]+([EW])'
+        coord_pattern = r"(\d+\.?\d*)[°\s]+([NS])[,;\s]+(\d+\.?\d*)[°\s]+([EW])"
         coords = re.search(coord_pattern, description)
         if coords:
             try:
@@ -109,13 +95,13 @@ def parse_gdacs_entry(entry) -> dict:
                 lon = float(coords.group(3))
                 lon_dir = coords.group(4)
 
-                latitude = -lat if lat_dir == 'S' else lat
-                longitude = -lon if lon_dir == 'W' else lon
+                latitude = -lat if lat_dir == "S" else lat
+                longitude = -lon if lon_dir == "W" else lon
             except (ValueError, IndexError):
                 pass
 
     # Parse timestamp
-    timestamp = entry.get('published', datetime.utcnow().isoformat())
+    timestamp = entry.get("published", datetime.now(timezone.utc).isoformat())
 
     return {
         "title": title,
@@ -134,8 +120,19 @@ def parse_gdacs_entry(entry) -> dict:
 def fetch_gdacs_alerts():
     """Fetch disaster alerts from GDACS RSS feed."""
     try:
-        feed = feedparser.parse(GDACS_RSS_URL)
-        return feed.entries
+        response = requests.get(GDACS_RSS_URL, timeout=30)
+        response.raise_for_status()
+
+        root = ET.fromstring(response.content)
+        entries = []
+        for item in root.findall(".//item"):
+            entries.append({
+                "title": item.findtext("title", default=""),
+                "description": item.findtext("description", default=""),
+                "link": item.findtext("link", default=""),
+                "published": item.findtext("pubDate", default=datetime.now(timezone.utc).isoformat()),
+            })
+        return entries
     except Exception as e:
         print(f"[GDACS Producer] Error fetching RSS feed: {e}")
         return []
@@ -164,7 +161,7 @@ def main():
 
                 for entry in entries:
                     # Create unique ID from link or title
-                    alert_id = entry.get('link', entry.get('title', ''))
+                    alert_id = entry.get("link", entry.get("title", ""))
 
                     if alert_id in processed_alerts:
                         continue

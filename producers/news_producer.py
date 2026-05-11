@@ -1,13 +1,7 @@
 """
-News API → Kafka producer.
-Polls NewsAPI every 60 seconds, deduplicates by title,
+Currents API → Kafka producer.
+Polls Currents every 30 seconds, deduplicates by title,
 and publishes clean JSON messages to the news_stream topic.
-
-FIX for empty/inconsistent stream:
-- Added retry with exponential backoff
-- Added HTTP status validation
-- Added max deduplication cache size (prevents unbounded memory growth)
-- Added multiple category fetching to increase article volume
 """
 
 import json
@@ -22,15 +16,10 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from config.settings import KAFKA_BOOTSTRAP, KAFKA_NEWS_TOPIC, NEWS_API_KEY
 
-# Fetch multiple categories for richer event detection
-NEWS_ENDPOINTS = [
-    f"https://newsapi.org/v2/top-headlines?language=en&pageSize=20&apiKey={NEWS_API_KEY}",
-    f"https://newsapi.org/v2/top-headlines?language=en&category=technology&pageSize=10&apiKey={NEWS_API_KEY}",
-    f"https://newsapi.org/v2/top-headlines?language=en&category=science&pageSize=10&apiKey={NEWS_API_KEY}",
-    f"https://newsapi.org/v2/top-headlines?language=en&category=health&pageSize=10&apiKey={NEWS_API_KEY}",
-]
+CURRENTS_API_URL = "https://api.currentsapi.services/v1/latest-news"
+CATEGORIES = ["general", "technology", "science", "health"]
 
-POLL_INTERVAL = 60  # 1 minute - more frequent updates for better real-time detection
+POLL_INTERVAL = 30  # 30 seconds
 MAX_CACHE_SIZE = 2000   # prevent unbounded memory growth
 MAX_RETRIES = 3
 
@@ -44,15 +33,21 @@ def create_producer():
     )
 
 
-def fetch_articles(url: str, retries: int = MAX_RETRIES) -> list:
+def fetch_articles(category: str, retries: int = MAX_RETRIES) -> list:
     """Fetch articles with exponential backoff retry."""
+    params = {
+        "language": "en",
+        "category": category,
+        "apiKey": NEWS_API_KEY
+    }
+
     for attempt in range(retries):
         try:
-            response = requests.get(url, timeout=10)
+            response = requests.get(CURRENTS_API_URL, params=params, timeout=10)
             if response.status_code == 200:
                 data = response.json()
-                if data.get("status") == "ok":
-                    return data.get("articles", [])
+                if data.get("status") == "ok" or "news" in data:
+                    return data.get("news", [])
                 else:
                     print(f"[News Producer] API error: {data.get('message')}")
                     return []
@@ -61,7 +56,7 @@ def fetch_articles(url: str, retries: int = MAX_RETRIES) -> list:
                 print(f"[News Producer] Rate limited. Waiting {wait}s...")
                 time.sleep(wait)
             else:
-                print(f"[News Producer] HTTP {response.status_code} for {url}")
+                print(f"[News Producer] HTTP {response.status_code} for category={category}")
                 return []
         except requests.exceptions.Timeout:
             print(f"[News Producer] Timeout (attempt {attempt+1})")
@@ -73,13 +68,17 @@ def fetch_articles(url: str, retries: int = MAX_RETRIES) -> list:
 
 
 def build_message(article: dict) -> dict:
+    source = article.get("author")
+    if isinstance(source, list):
+        source = ", ".join(source[:2]) if source else None
+
     return {
         "title":        article.get("title"),
-        "description":  article.get("description"),
-        "content":      article.get("content"),
-        "source":       article.get("source", {}).get("name"),
-        "author":       article.get("author"),
-        "published_at": article.get("publishedAt"),
+        "description":  article.get("description") or article.get("summary"),
+        "content":      article.get("description") or article.get("summary"),
+        "source":       source,
+        "author":       source,
+        "published_at": article.get("published"),
         "url":          article.get("url"),
         "category":     article.get("_category", "general"),
     }
@@ -97,15 +96,8 @@ def main():
     while True:
         batch_count = 0
 
-        for url in NEWS_ENDPOINTS:
-            # Tag category from URL for downstream use
-            category = "general"
-            for cat in ["technology", "science", "health", "business"]:
-                if cat in url:
-                    category = cat
-                    break
-
-            articles = fetch_articles(url)
+        for category in CATEGORIES:
+            articles = fetch_articles(category)
 
             for article in articles:
                 title = article.get("title")

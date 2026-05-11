@@ -357,6 +357,7 @@ def process_wiki_batch(batch_df, batch_id):
         )
 
         doc["source_type"] = "wikipedia"
+        doc["event_cluster"] = "wiki"
 
         # FULL PROCESSED EVENT
         result = processed_collection.insert_one(doc)
@@ -404,6 +405,7 @@ def process_news_batch(batch_df, batch_id):
         )
 
         doc["source_type"] = "news"
+        doc["event_cluster"] = "news"
 
         # FULL PROCESSED EVENT
         result = processed_collection.insert_one(doc)
@@ -453,6 +455,7 @@ def process_gdacs_batch(batch_df, batch_id):
         # GDACS already has source_type set
         if "source_type" not in doc:
             doc["source_type"] = "gdacs"
+        doc["event_cluster"] = "disaster"
 
         # FULL PROCESSED EVENT
         result = processed_collection.insert_one(doc)
@@ -503,6 +506,7 @@ def process_financial_batch(batch_df, batch_id):
         # Financial already has source_type set
         if "source_type" not in doc:
             doc["source_type"] = "financial"
+        doc["event_cluster"] = "finance"
 
         # FULL PROCESSED EVENT
         result = processed_collection.insert_one(doc)

@@ -27,28 +27,17 @@ BLOCKED_PREFIXES = (
 # SAMPLING CONFIGURATION - Adjust to control Wikipedia volume
 # ============================================================
 
-# Only send this percentage of Wikipedia events (10% = 1 in 10 events)
-WIKIPEDIA_SAMPLING_RATE = 0.1  # 10% sampling - much more permissive
+# Only send this percentage of Wikipedia events
+WIKIPEDIA_SAMPLING_RATE = 0.5  # 50% sampling for higher throughput
 
-# Minimum edit size to consider (filter out small edits)
-MIN_EDIT_SIZE = 50  # Only send edits with at least 50 character changes (was 100)
+# Minimum edit size to consider (filter out tiny edits)
+MIN_EDIT_SIZE = 5
 
 # Only process events from these namespaces (0 = main articles only)
 ALLOWED_NAMESPACES = [0]
 
-# Minimum edit length for title
-MIN_TITLE_LENGTH = 15  # Filter out short titles
-
-# Block these patterns in titles
-BLOCKED_PATTERNS = [
-    "Draft:", "Draft talk:", "User:", "User talk:", "Talk:",
-    "Wikipedia:", "Wikipedia talk:", "File:", "Template:",
-    "Category:", "Portal:", "Module:", "Help:", "MediaWiki:",
-    "List of", "list of", "Lists of", "lists of"  # Filter out list pages
-]
-
 # Delay between processing events (seconds)
-PROCESSING_DELAY = 1.0  # Add delay to reduce volume and improve quality control
+PROCESSING_DELAY = 0.0
 
 
 def create_producer():
@@ -103,28 +92,16 @@ def should_send_event(data: dict, message: dict) -> bool:
     if data.get("bot") is True:
         return False
 
-    # Filter 4: Skip blocked prefixes and patterns
+    # Filter 4: Skip blocked prefixes
     title = data.get("title", "")
     if title.startswith(BLOCKED_PREFIXES):
         return False
 
-    # Filter 5: Check blocked patterns
-    for pattern in BLOCKED_PATTERNS:
-        if pattern.lower() in title.lower():
-            return False
-
-    # Filter 6: Minimum title length
-    if len(title.strip()) < MIN_TITLE_LENGTH:
+    # Filter 5: Skip empty and numeric-only titles
+    if not title.strip() or title.strip().isdigit():
         return False
 
-    # Filter 7: Skip very short titles or numeric-only titles
-    if len(title.strip()) < 10 or title.strip().isdigit():
-        return False
-
-    # Filter 8: Skip titles with special characters that indicate low quality
-    # Removed this filter - too restrictive
-
-    # Filter 9: Sampling rate (only send X% of events)
+    # Filter 6: Sampling rate (only send X% of events)
     if random.random() > WIKIPEDIA_SAMPLING_RATE:
         return False
 
@@ -190,8 +167,8 @@ def stream_wikipedia(producer: KafkaProducer):
         else:
             events_filtered += 1
 
-        # Add small delay to reduce processing speed
-        time.sleep(PROCESSING_DELAY)
+        if PROCESSING_DELAY > 0:
+            time.sleep(PROCESSING_DELAY)
 
 
 def main():

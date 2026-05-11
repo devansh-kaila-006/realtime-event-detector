@@ -34,7 +34,7 @@ INDICES = {
 # Anomaly detection parameters
 PRICE_CHANGE_THRESHOLD = 5.0  # 5% price change
 VOLUME_SPIKE_MULTIPLIER = 2.0  # 2x normal volume
-UPDATE_INTERVAL = 300  # 5 minutes between updates
+UPDATE_INTERVAL = 30  # 30 seconds between updates
 PRICE_HISTORY_LENGTH = 20  # Keep 20 data points for baseline
 
 
@@ -176,26 +176,28 @@ def main():
                 # Detect anomalies
                 anomalies = detect_anomalies(index_data, price_history)
 
+                # Always emit at least one market update per symbol each cycle.
+                messages = [build_anomaly_message(index_data, [])]
                 if anomalies:
-                    # Send each anomaly as a separate event
-                    for anomaly in anomalies:
-                        message = build_anomaly_message(index_data, [anomaly])
+                    messages.extend(build_anomaly_message(index_data, [anomaly]) for anomaly in anomalies)
 
-                        try:
-                            future = producer.send(KAFKA_FINANCIAL_TOPIC, value=message)
-                            future.get(timeout=5)
+                for message in messages:
+                    try:
+                        future = producer.send(KAFKA_FINANCIAL_TOPIC, value=message)
+                        future.get(timeout=5)
 
+                        if message["anomaly_type"] != "market_update":
                             anomalies_detected += 1
 
-                            print(f"[Financial] {message['anomaly_type']:20s} | "
-                                  f"{message['severity']:10s} | {message['description'][:70]}")
+                        print(f"[Financial] {message['anomaly_type']:20s} | "
+                              f"{message['severity']:10s} | {message['description'][:70]}")
 
-                        except KafkaError as e:
-                            print(f"[Financial Producer] Kafka send error: {e}")
-                            continue
+                    except KafkaError as e:
+                        print(f"[Financial Producer] Kafka send error: {e}")
+                        continue
 
             if anomalies_detected == 0:
-                print(f"[Financial Producer] No anomalies detected. Monitoring continues...")
+                print("[Financial Producer] No anomalies detected; market updates were still published.")
 
             print(f"\n[Financial Producer] Cycle complete. Waiting {UPDATE_INTERVAL}s...\n")
 

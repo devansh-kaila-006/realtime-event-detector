@@ -98,22 +98,35 @@ def fetch_filtered_events(filters, limit=1000):
     return events
 
 
-def get_event_time_series_data(hours=24):
-    """Get time series data for the last N hours"""
+def get_event_time_series_data(hours=24, source_filter=None, date_range=None):
+    """Get time series data for the last N hours (minute-level for live updates)."""
     events_collection, _ = get_mongo_collections()
+
+    match_query = {
+        "ingested_at": {
+            "$gte": datetime.utcnow() - timedelta(hours=hours)
+        }
+    }
+
+    if source_filter:
+        source_values = set(source_filter)
+        # Backward compatibility for legacy wiki source label.
+        if "wikipedia" in source_values:
+            source_values.add("wiki")
+        match_query["source_type"] = {"$in": list(source_values)}
+
+    if date_range:
+        start_date, end_date = date_range
+        match_query["ingested_at"] = {"$gte": start_date, "$lte": end_date}
 
     pipeline = [
         {
-            "$match": {
-                "ingested_at": {
-                    "$gte": datetime.utcnow() - timedelta(hours=hours)
-                }
-            }
+            "$match": match_query
         },
         {
             "$group": {
                 "_id": {
-                    "date": {"$dateToString": {"format": "%Y-%m-%d:%H", "date": "$ingested_at"}},
+                    "date": {"$dateToString": {"format": "%Y-%m-%d %H:%M", "date": "$ingested_at"}},
                     "source": "$source_type"
                 },
                 "count": {"$sum": 1}
