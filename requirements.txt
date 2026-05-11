@@ -1,0 +1,43 @@
+# ─── Kafka ───────────────────────────────────────────────────────
+kafka-python==2.0.2
+
+# ─── Spark (install separately via: pip install pyspark==3.5.0) ──
+pyspark==3.5.0
+
+# ─── MongoDB ─────────────────────────────────────────────────────
+pymongo==4.6.1
+
+# ─── NLP ─────────────────────────────────────────────────────────
+spacy==3.7.4
+# After installing spaCy, run:
+#   python -m spacy download en_core_web_sm
+
+# ─── Dashboard ───────────────────────────────────────────────────
+streamlit==1.32.2
+plotly==5.20.0
+pandas==2.2.1
+
+# ─── HTTP ────────────────────────────────────────────────────────
+requests==2.31.0
+
+# ─── Utilities ───────────────────────────────────────────────────
+python-dotenv==1.0.1
+
+# ─── Enhanced NLP ─────────────────────────────────────────────────
+vaderSentiment==3.3.2
+
+# ─── Machine Learning ─────────────────────────────────────────────
+scikit-learn==1.4.0
+
+# ─── Real-time Updates ────────────────────────────────────────────
+websockets==12.0
+streamlit-autorefresh==1.0.1
+
+# ─── Advanced Visualizations ──────────────────────────────────────
+folium==0.15.0
+
+# ─── Data Export ──────────────────────────────────────────────────
+openpyxl==3.1.2
+
+# ─── RSS/Feed Parsing ─────────────────────────────────────────────
+feedparser==6.0.10
