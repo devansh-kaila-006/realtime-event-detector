@@ -12,16 +12,18 @@ kafka-python==2.0.2
 pyspark==3.5.0
 pyarrow==15.0.2
 
-# ─── NLP ─────────────────────────────────────────────────────────
+# ─── NLP & Deep Learning ───────────────────────────────────────────
 spacy==3.7.4
 # After installing spaCy, run:
 #   python -m spacy download en_core_web_sm
-vaderSentiment==3.3.2
-
+torch==2.2.1
+transformers==4.38.2
+sentence-transformers==2.5.1
 # ─── Machine Learning & Utils ────────────────────────────────────
 scikit-learn==1.4.0
 numpy==1.26.4
 pandas==2.2.1
+matplotlib==3.8.3
 
 # ─── HTTP & Feeds ──────────────────────────────────────────────────
 requests==2.31.0

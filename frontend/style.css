@@ -382,3 +382,24 @@ body {
 .empty-state i {
   font-size: 2rem;
 }
+
+/* Meta-Event / Anomaly Alerts */
+.event-card.is-anomaly {
+  border-left-color: var(--accent-red);
+  background: rgba(239, 68, 68, 0.1);
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  animation: pulse-alert 2s infinite;
+}
+
+.event-card.is-anomaly .event-title {
+  color: var(--accent-red);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+@keyframes pulse-alert {
+  0% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.2); }
+  50% { box-shadow: 0 0 25px rgba(239, 68, 68, 0.5); }
+  100% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.2); }
+}

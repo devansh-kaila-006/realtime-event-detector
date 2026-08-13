@@ -168,12 +168,16 @@ function renderEvent(event) {
   }
 
   // Check filter
-  if (currentFilter !== 'all' && event.source_type !== currentFilter) {
+  if (currentFilter !== 'all' && event.source_type !== currentFilter && event.source_type !== 'system_alert') {
     return;
   }
 
   const el = document.createElement('div');
   el.className = `event-card glass-panel source-${event.source_type || 'wikipedia'}`;
+  
+  if (event.is_anomaly) {
+    el.classList.add('is-anomaly');
+  }
   
   const timeStr = new Date(event.ingested_at || event.timestamp || Date.now()).toLocaleTimeString();
   const sourceIcon = getSourceIcon(event.source_type);

@@ -4,13 +4,14 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from motor.motor_asyncio import AsyncIOMotorClient
 from typing import List
 
-app = FastAPI(title="Real-Time Event Detector API (Big Data Edition)")
+app = FastAPI(title="Real-Time Event Detector API (Academic Edition)")
 
 # MongoDB connection
 MONGO_URL = "mongodb://localhost:27017"
 client = AsyncIOMotorClient(MONGO_URL)
 db = client.event_detector
 processed_collection = db.processed_events
+meta_collection = db.meta_events
 
 class ConnectionManager:
     def __init__(self):
@@ -33,11 +34,11 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-async def watch_mongo_changes():
+async def watch_mongo_changes(collection):
     """Watch MongoDB for new events using Change Streams."""
-    print("[Backend] Watching MongoDB for new processed events...")
+    print(f"[Backend] Watching MongoDB collection '{collection.name}' for new events...")
     try:
-        async with processed_collection.watch([{"$match": {"operationType": "insert"}}]) as stream:
+        async with collection.watch([{"$match": {"operationType": "insert"}}]) as stream:
             async for change in stream:
                 event = change["fullDocument"]
                 if "_id" in event:
@@ -45,13 +46,13 @@ async def watch_mongo_changes():
                 
                 await manager.broadcast(json.dumps(event))
     except Exception as e:
-        print(f"[Backend] Change Stream Error: {e}")
-        print("Ensure MongoDB is running as a Replica Set (`docker-compose up -d mongo-init`)")
+        print(f"[Backend] Change Stream Error on {collection.name}: {e}")
 
 @app.on_event("startup")
 async def startup_event():
-    # Start the change stream listener in the background
-    asyncio.create_task(watch_mongo_changes())
+    # Start the change stream listeners in the background
+    asyncio.create_task(watch_mongo_changes(processed_collection))
+    asyncio.create_task(watch_mongo_changes(meta_collection))
 
 @app.on_event("shutdown")
 async def shutdown_event():
