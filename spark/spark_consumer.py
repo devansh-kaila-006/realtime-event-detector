@@ -7,6 +7,7 @@ from datetime import datetime
 # Windows Spark fixes for local execution
 os.environ["SPARK_LOCAL_IP"] = "127.0.0.1"
 os.environ["HADOOP_HOME"] = os.path.dirname(os.path.dirname(__file__))
+os.environ["PATH"] = os.path.join(os.environ["HADOOP_HOME"], "bin") + os.pathsep + os.environ.get("PATH", "")
 os.environ["spark.hadoop.io.native.lib.available"] = "false"
 
 from pyspark.sql import SparkSession

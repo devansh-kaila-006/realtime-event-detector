@@ -254,7 +254,7 @@ filterPills.forEach(pill => {
     
     // Rerender visible events
     feedContainer.innerHTML = '';
-    const filtered = currentFilter === 'all' ? events : events.filter(e => e.source_type === currentFilter);
+    const filtered = currentFilter === 'all' ? events : events.filter(e => e.source_type === currentFilter || e.source_type === 'system_alert');
     const toRender = filtered.slice(-MAX_EVENTS_ON_SCREEN).reverse();
     
     if (toRender.length === 0) {
