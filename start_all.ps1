@@ -14,7 +14,7 @@ Start-Process -FilePath "python" -ArgumentList "producers/mock_producer.py"
 Write-Host "Started Data Producer" -ForegroundColor Green
 
 # 4. Start Vite Frontend
-Start-Process -FilePath "npm" -ArgumentList "run", "dev" -WorkingDirectory "frontend"
+Start-Process -FilePath "npm.cmd" -ArgumentList "run", "dev" -WorkingDirectory "frontend"
 Write-Host "Started Frontend (Port 5173)" -ForegroundColor Green
 
 Write-Host "All services started! Please wait a few seconds for them to initialize." -ForegroundColor Yellow

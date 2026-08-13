@@ -11,9 +11,18 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Leaflet Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+    <!-- Vis-Network for Entity Graph -->
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="./style.css">
   </head>
   <body>
+    <div id="chart-backdrop"></div>
     <div class="app-container">
       
       <!-- Sidebar -->
@@ -31,7 +40,7 @@
         <nav class="nav-menu">
           <a href="#" class="active"><i class="fa-solid fa-chart-line"></i> Dashboard</a>
           <a href="#"><i class="fa-solid fa-globe"></i> World Map</a>
-          <a href="#"><i class="fa-solid fa-bell"></i> Alerts <span class="badge">3</span></a>
+          <a href="#"><i class="fa-solid fa-bell"></i> Alerts <span class="badge" id="alerts-badge">0</span></a>
           <a href="#"><i class="fa-solid fa-gear"></i> Settings</a>
         </nav>
         
@@ -54,69 +63,306 @@
           <h2>Live Global Feed</h2>
           <div class="search-bar glass-panel">
             <i class="fa-solid fa-search"></i>
-            <input type="text" placeholder="Search events, locations, keywords...">
+            <input type="text" id="search-input" placeholder="Search events, locations, keywords...">
           </div>
           <div class="user-profile">
             <img src="https://ui-avatars.com/api/?name=Admin&background=0D8ABC&color=fff" alt="Admin">
           </div>
         </header>
 
-        <div class="dashboard-grid">
+        <!-- Ticker Tape -->
+        <div class="ticker-wrap glass-panel">
+          <div class="ticker-heading"><i class="fa-solid fa-bolt" style="color: var(--accent-yellow);"></i> BREAKING</div>
+          <div class="ticker-overflow">
+            <div class="ticker-content" id="ticker-content">
+              <!-- Ticker items go here -->
+              <span class="ticker-item">System initializing... Awaiting meta-events...</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="dashboard-view" class="view-container active">
           
-          <!-- Live Feed Column -->
-          <div class="feed-column">
-            <div class="section-header">
-              <h3>Real-Time Stream</h3>
-              <div class="filter-pills">
-                <span class="pill active" data-filter="all">All</span>
-                <span class="pill" data-filter="news">News</span>
-                <span class="pill" data-filter="gdacs">Alerts</span>
-                <span class="pill" data-filter="financial">Market</span>
-                <span class="pill" data-filter="wikipedia">Wiki</span>
-              </div>
+
+
+          <!-- System Diagnostics Panel -->
+          <div class="system-diagnostics glass-panel">
+            <div class="diag-item">
+              <span class="diag-label">Kafka Latency</span>
+              <span class="diag-value" id="diag-kafka">12 ms</span>
             </div>
-            
-            <div class="feed-container" id="event-feed">
-              <!-- Events will be injected here via JS -->
-              <div class="empty-state">
-                <i class="fa-solid fa-satellite-dish fa-beat"></i>
-                <p>Waiting for events...</p>
-              </div>
+            <div class="diag-item">
+              <span class="diag-label">Throughput</span>
+              <span class="diag-value" id="diag-throughput">0 ev/s</span>
+            </div>
+            <div class="diag-item">
+              <span class="diag-label">WS Ping</span>
+              <span class="diag-value" id="diag-ping">4 ms</span>
+            </div>
+            <div class="diag-item">
+              <span class="diag-label">Sys Health</span>
+              <span class="diag-value" style="color: var(--accent-green);">OPTIMAL</span>
             </div>
           </div>
 
-          <!-- Charts Column -->
-          <div class="charts-column">
+          <div class="dashboard-grid">
             
-            <div class="chart-card glass-panel">
-              <h3>Event Clusters</h3>
-              <div class="chart-container">
-                <canvas id="clusterChart"></canvas>
+            <!-- Live Feed Column -->
+            <div class="feed-column">
+              <div class="section-header">
+                <h3>Real-Time Stream</h3>
+                <div class="filter-pills">
+                  <span class="pill active" data-filter="all">All</span>
+                  <span class="pill" data-filter="news">News</span>
+                  <span class="pill" data-filter="gdacs">Alerts</span>
+                  <span class="pill" data-filter="financial">Market</span>
+                  <span class="pill" data-filter="wikipedia">Wiki</span>
+                </div>
               </div>
-            </div>
-            
-            <div class="chart-card glass-panel">
-              <h3>Sentiment Analysis</h3>
-              <div class="chart-container sentiment-container">
-                <canvas id="sentimentChart"></canvas>
+              
+              <!-- Mini Alerts Inbox -->
+              <div class="mini-alerts-wrapper glass-panel">
+                <div class="mini-alerts-header">
+                  <span><i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-red);"></i> Critical Anomalies</span>
+                </div>
+                <div class="mini-alerts-list" id="mini-alerts-list">
+                  <!-- Recent critical alerts will appear here -->
+                  <div class="empty-state" style="padding: 1rem 0;">No active anomalies</div>
+                </div>
+              </div>
+
+              <div class="feed-container" id="event-feed">
+                <!-- Events will be injected here via JS -->
+                <div class="empty-state">
+                  <i class="fa-solid fa-satellite-dish fa-beat"></i>
+                  <p>Waiting for events...</p>
+                </div>
               </div>
             </div>
 
-            <div class="chart-card glass-panel">
-              <h3>Event Sources</h3>
-              <div class="chart-container source-container">
-                <canvas id="sourceChart"></canvas>
+            <!-- Charts Column -->
+            <div class="charts-column">
+              
+              <div class="chart-card glass-panel">
+                <h3>Event Clusters <i class="fa-solid fa-expand expand-btn" title="Expand"></i></h3>
+                <div class="chart-container">
+                  <canvas id="clusterChart"></canvas>
+                </div>
               </div>
-            </div>
+              
+              <div class="chart-card glass-panel">
+                <h3>Sentiment Analysis <i class="fa-solid fa-expand expand-btn" title="Expand"></i></h3>
+                <div class="chart-container sentiment-container">
+                  <canvas id="sentimentChart"></canvas>
+                </div>
+              </div>
 
+              <div class="chart-card glass-panel">
+                <h3>Sentiment Trend (Positive/Negative) <i class="fa-solid fa-expand expand-btn" title="Expand"></i></h3>
+                <div class="chart-container">
+                  <canvas id="sentimentLineChart"></canvas>
+                </div>
+              </div>
+
+              <div class="chart-card glass-panel">
+                <h3>Event Velocity (Events / Min) <i class="fa-solid fa-expand expand-btn" title="Expand"></i></h3>
+                <div class="chart-container">
+                  <canvas id="velocityChart"></canvas>
+                </div>
+              </div>
+
+              <div class="chart-card glass-panel" style="flex: 1; min-height: 250px;">
+                <h3>Entity Correlation Network <i class="fa-solid fa-expand expand-btn" title="Expand"></i></h3>
+                <div class="chart-container" id="entity-network" style="height: 100%; min-height: 200px;">
+                  <!-- Network graph will go here -->
+                  <div class="empty-state">
+                    <p>Awaiting entity extraction...</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="chart-card glass-panel">
+                <h3>Event Sources <i class="fa-solid fa-expand expand-btn" title="Expand"></i></h3>
+                <div class="chart-container source-container">
+                  <canvas id="sourceChart"></canvas>
+                </div>
+              </div>
+
+              <div class="chart-card glass-panel">
+                <h3>Geographical Hotspots</h3>
+                <div class="table-container">
+                  <table class="hotspots-table">
+                    <thead>
+                      <tr>
+                        <th>Location</th>
+                        <th>Events</th>
+                        <th>Threat Level</th>
+                      </tr>
+                    </thead>
+                    <tbody id="hotspots-tbody">
+                      <tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 1rem;">Awaiting data...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+            </div>
           </div>
 
+
+
+        </div>
+
+        <!-- World Map View -->
+        <div id="world-map-view" class="view-container">
+          <div class="section-header" style="margin-bottom: 1rem;">
+            <h3>Global Event Activity Map</h3>
+            <div class="filter-pills">
+              <span class="pill active">Real-Time</span>
+              <span class="pill">Last 24h</span>
+            </div>
+          </div>
+          <div class="glass-panel" style="flex: 1; position: relative; overflow: hidden; border-radius: 12px; border: 1px solid var(--glass-border);">
+            <div id="map" style="width: 100%; height: 100%; z-index: 1;"></div>
+            <div class="map-overlay">
+              <div class="stat-card">
+                <span class="stat-value" id="map-active-regions">0</span>
+                <span class="stat-label">Active Regions</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Alerts View -->
+        <div id="alerts-view" class="view-container">
+          <div class="section-header">
+            <h3><i class="fa-solid fa-bell" style="color: var(--accent-red); margin-right: 0.5rem;"></i> High-Priority Alerts</h3>
+            <button class="action-btn" id="clear-alerts-btn"><i class="fa-solid fa-check-double"></i> Mark All Read</button>
+          </div>
+          <div class="glass-panel" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+            <div class="feed-container" id="alerts-feed" style="flex: 1; padding: 1.5rem; overflow-y: auto;">
+              <!-- Alerts will go here -->
+              <div class="empty-state" id="alerts-empty-state">
+                <i class="fa-solid fa-shield-check" style="font-size: 3rem; color: var(--accent-green); margin-bottom: 1rem;"></i>
+                <p>System is secure. No active alerts at this time.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings View -->
+        <div id="settings-view" class="view-container">
+          <div class="section-header" style="margin-bottom: 1rem;">
+            <h3>System Settings</h3>
+          </div>
+          
+          <div class="settings-grid">
+            <!-- Data Processing Section -->
+            <div class="glass-panel settings-card">
+              <h4 class="settings-section-title"><i class="fa-solid fa-microchip"></i> Data Processing</h4>
+              
+              <div class="setting-item">
+                <div class="setting-info">
+                  <h5>Anomaly Detection Sensitivity</h5>
+                  <p>Adjust the threshold for triggering cross-stream meta-alerts.</p>
+                </div>
+                <div class="setting-control">
+                  <input type="range" min="1" max="100" value="75" class="custom-slider">
+                  <span class="slider-val">75%</span>
+                </div>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-info">
+                  <h5>Event Retention Policy</h5>
+                  <p>How long to keep raw events in the live database.</p>
+                </div>
+                <div class="setting-control">
+                  <select class="custom-select">
+                    <option>12 Hours</option>
+                    <option selected>24 Hours</option>
+                    <option>7 Days</option>
+                    <option>30 Days</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Display & UI Section -->
+            <div class="glass-panel settings-card">
+              <h4 class="settings-section-title"><i class="fa-solid fa-desktop"></i> Interface & Alerts</h4>
+              
+              <div class="setting-item">
+                <div class="setting-info">
+                  <h5>Audio Notifications</h5>
+                  <p>Play a sound when a high-priority meta-event is detected.</p>
+                </div>
+                <div class="setting-control">
+                  <label class="switch">
+                    <input type="checkbox" checked>
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+              </div>
+              
+              <div class="setting-item">
+                <div class="setting-info">
+                  <h5>High Contrast Map</h5>
+                  <p>Use a darker, high-contrast base map for the World Map view.</p>
+                </div>
+                <div class="setting-control">
+                  <label class="switch">
+                    <input type="checkbox" checked id="toggle-map-theme">
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+              </div>
+
+            </div>
+          </div>
+          
+          <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end;">
+            <button class="action-btn primary" onclick="alert('Settings saved successfully!')"><i class="fa-solid fa-save"></i> Save Configuration</button>
+          </div>
         </div>
 
       </main>
 
     </div>
     
+    <!-- Event Details Modal -->
+    <div id="event-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-content glass-panel">
+        <div class="modal-header">
+          <h3 id="modal-title">Event Details</h3>
+          <button id="modal-close-btn" class="action-btn"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal-body" style="margin-top: 1rem; color: var(--text-muted); font-size: 0.95rem; line-height: 1.6;">
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;" id="modal-tags">
+            <!-- Tags inserted here -->
+          </div>
+          <p id="modal-desc" style="margin-bottom: 1.5rem; color: var(--text-main);"></p>
+          
+          <div class="nlp-details-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+            <div>
+              <strong style="color: var(--text-main); display: block; margin-bottom: 0.5rem;"><i class="fa-solid fa-brain" style="color: var(--accent-purple);"></i> Extracted Entities</strong>
+              <div id="modal-entities" style="font-size: 0.85rem;">None detected</div>
+            </div>
+            <div>
+              <strong style="color: var(--text-main); display: block; margin-bottom: 0.5rem;"><i class="fa-solid fa-key" style="color: var(--accent-blue);"></i> Keywords</strong>
+              <div id="modal-keywords" style="font-size: 0.85rem; display: flex; flex-wrap: wrap; gap: 0.3rem;">None</div>
+            </div>
+          </div>
+          
+          <div style="margin-top: 1rem; font-size: 0.8rem; border-top: 1px solid var(--glass-border); padding-top: 1rem; display: flex; justify-content: space-between;">
+            <span id="modal-source"><i class="fa-solid fa-rss"></i> Source</span>
+            <span id="modal-time"><i class="fa-solid fa-clock"></i> Time</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+
     <script type="module" src="./main.js"></script>
   </body>
 </html>
