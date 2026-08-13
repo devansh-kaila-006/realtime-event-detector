@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Real-Time Event Radar</title>
+    <meta name="description" content="Live monitoring of global events including news, Wikipedia edits, financial anomalies, and disasters." />
+    <!-- Modern Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <div class="app-container">
+      
+      <!-- Sidebar -->
+      <aside class="sidebar glass-panel">
+        <div class="logo">
+          <i class="fa-solid fa-radar fa-spin-pulse"></i>
+          <h1>Event Radar</h1>
+        </div>
+        
+        <div class="status-indicator">
+          <div class="pulse-dot"></div>
+          <span id="connection-status">Connecting...</span>
+        </div>
+
+        <nav class="nav-menu">
+          <a href="#" class="active"><i class="fa-solid fa-chart-line"></i> Dashboard</a>
+          <a href="#"><i class="fa-solid fa-globe"></i> World Map</a>
+          <a href="#"><i class="fa-solid fa-bell"></i> Alerts <span class="badge">3</span></a>
+          <a href="#"><i class="fa-solid fa-gear"></i> Settings</a>
+        </nav>
+        
+        <div class="stats-summary">
+          <div class="stat-card">
+            <span class="stat-value" id="total-events">0</span>
+            <span class="stat-label">Events Processed</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="events-per-minute">0</span>
+            <span class="stat-label">Events / Min</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Content -->
+      <main class="main-content">
+        
+        <header class="topbar">
+          <h2>Live Global Feed</h2>
+          <div class="search-bar glass-panel">
+            <i class="fa-solid fa-search"></i>
+            <input type="text" placeholder="Search events, locations, keywords...">
+          </div>
+          <div class="user-profile">
+            <img src="https://ui-avatars.com/api/?name=Admin&background=0D8ABC&color=fff" alt="Admin">
+          </div>
+        </header>
+
+        <div class="dashboard-grid">
+          
+          <!-- Live Feed Column -->
+          <div class="feed-column">
+            <div class="section-header">
+              <h3>Real-Time Stream</h3>
+              <div class="filter-pills">
+                <span class="pill active" data-filter="all">All</span>
+                <span class="pill" data-filter="news">News</span>
+                <span class="pill" data-filter="gdacs">Alerts</span>
+                <span class="pill" data-filter="financial">Market</span>
+                <span class="pill" data-filter="wikipedia">Wiki</span>
+              </div>
+            </div>
+            
+            <div class="feed-container" id="event-feed">
+              <!-- Events will be injected here via JS -->
+              <div class="empty-state">
+                <i class="fa-solid fa-satellite-dish fa-beat"></i>
+                <p>Waiting for events...</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Charts Column -->
+          <div class="charts-column">
+            
+            <div class="chart-card glass-panel">
+              <h3>Event Clusters</h3>
+              <div class="chart-container">
+                <canvas id="clusterChart"></canvas>
+              </div>
+            </div>
+            
+            <div class="chart-card glass-panel">
+              <h3>Sentiment Analysis</h3>
+              <div class="chart-container sentiment-container">
+                <canvas id="sentimentChart"></canvas>
+              </div>
+            </div>
+
+            <div class="chart-card glass-panel">
+              <h3>Event Sources</h3>
+              <div class="chart-container source-container">
+                <canvas id="sourceChart"></canvas>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+      </main>
+
+    </div>
+    
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
