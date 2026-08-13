@@ -128,7 +128,7 @@ def main():
     spark.sparkContext.setLogLevel("WARN")
     
     print("\n==============================================")
-    print("🚀 SPARK STRUCTURED STREAMING (PAPER EDITION)")
+    print(">>> SPARK STRUCTURED STREAMING (PAPER EDITION)")
     print("==============================================\n")
 
     raw_df = spark.readStream \
