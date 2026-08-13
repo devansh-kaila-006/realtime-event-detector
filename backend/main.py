@@ -35,18 +35,37 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 async def watch_mongo_changes(collection):
-    """Watch MongoDB for new events using Change Streams."""
-    print(f"[Backend] Watching MongoDB collection '{collection.name}' for new events...")
+    """Watch MongoDB for new events using Change Streams with a Polling fallback."""
+    print(f"[Backend] Attempting to watch MongoDB collection '{collection.name}' using Change Streams...")
     try:
         async with collection.watch([{"$match": {"operationType": "insert"}}]) as stream:
             async for change in stream:
                 event = change["fullDocument"]
                 if "_id" in event:
                     event["_id"] = str(event["_id"])
-                
                 await manager.broadcast(json.dumps(event))
     except Exception as e:
         print(f"[Backend] Change Stream Error on {collection.name}: {e}")
+        print(f"[Backend] Falling back to polling mechanism for '{collection.name}'...")
+        # Polling fallback
+        last_seen_id = None
+        while True:
+            try:
+                # Get the most recent document to initialize if needed
+                if last_seen_id is None:
+                    latest = await collection.find_one(sort=[("_id", -1)])
+                    if latest:
+                        last_seen_id = latest["_id"]
+                else:
+                    # Find documents newer than last_seen_id
+                    cursor = collection.find({"_id": {"$gt": last_seen_id}}).sort("_id", 1)
+                    async for event in cursor:
+                        last_seen_id = event["_id"]
+                        event["_id"] = str(event["_id"])
+                        await manager.broadcast(json.dumps(event))
+            except Exception as poll_e:
+                print(f"[Backend] Polling Error on {collection.name}: {poll_e}")
+            await asyncio.sleep(1)
 
 @app.on_event("startup")
 async def startup_event():
