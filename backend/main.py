@@ -4,7 +4,18 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from motor.motor_asyncio import AsyncIOMotorClient
 from typing import List
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(title="Real-Time Event Detector API (Academic Edition)")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust this in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # MongoDB connection
 MONGO_URL = "mongodb://localhost:27017"
@@ -43,6 +54,7 @@ async def watch_mongo_changes(collection):
                 event = change["fullDocument"]
                 if "_id" in event:
                     event["_id"] = str(event["_id"])
+                print(f"[Backend] Broadcasting event {event.get('title')} to {len(manager.active_connections)} clients")
                 await manager.broadcast(json.dumps(event))
     except Exception as e:
         print(f"[Backend] Change Stream Error on {collection.name}: {e}")
@@ -67,15 +79,20 @@ async def watch_mongo_changes(collection):
                 print(f"[Backend] Polling Error on {collection.name}: {poll_e}")
             await asyncio.sleep(1)
 
-@app.on_event("startup")
-async def startup_event():
-    # Start the change stream listeners in the background
-    asyncio.create_task(watch_mongo_changes(processed_collection))
-    asyncio.create_task(watch_mongo_changes(meta_collection))
+from contextlib import asynccontextmanager
 
-@app.on_event("shutdown")
-async def shutdown_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Start the change stream listeners in the background
+    task1 = asyncio.create_task(watch_mongo_changes(processed_collection))
+    task2 = asyncio.create_task(watch_mongo_changes(meta_collection))
+    yield
+    # Shutdown: Clean up tasks and db client
+    task1.cancel()
+    task2.cancel()
     client.close()
+
+app = FastAPI(title="Real-Time Event Detector API (Academic Edition)", lifespan=lifespan)
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

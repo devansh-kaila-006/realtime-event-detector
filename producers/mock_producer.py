@@ -2,7 +2,7 @@ import json
 import time
 import random
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from kafka import KafkaProducer
 
 KAFKA_BOOTSTRAP = "localhost:9092"
@@ -42,7 +42,7 @@ def mock_news(producer):
             "location": loc['name'],
             "lat": loc['lat'],
             "lng": loc['lng'],
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "_raw_text": f"{title} Important news regarding {cat} occurred in {loc['name']}."
         }
         producer.send(KAFKA_TOPIC, value=event)
@@ -66,7 +66,7 @@ def mock_gdacs(producer):
             "location": loc['name'],
             "lat": loc['lat'],
             "lng": loc['lng'],
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "_raw_text": f"{title} A {severity} severity {d_type.lower()} has been detected near {loc['name']}."
         }
         producer.send(KAFKA_TOPIC, value=event)
@@ -88,7 +88,7 @@ def mock_financial(producer):
             "location": loc['name'],
             "lat": loc['lat'],
             "lng": loc['lng'],
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "_raw_text": f"{title} Market detected a {change:.2f}% movement for {sym} affecting trading hubs like {loc['name']}."
         }
         producer.send(KAFKA_TOPIC, value=event)

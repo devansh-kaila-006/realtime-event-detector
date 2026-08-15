@@ -684,8 +684,30 @@ if (eventModal) {
 }
 
 // Init
-initCharts();
-connectWebSocket();
+async function initApp() {
+  initCharts();
+  
+  // Fetch recent events to populate the dashboard immediately
+  try {
+    const res = await fetch('http://localhost:8000/api/events?limit=50');
+    if (res.ok) {
+      const initialEvents = await res.json();
+      // Render in reverse so the newest is at the top
+      initialEvents.reverse().forEach(event => {
+        events.push(event);
+        updateStats();
+        updateCharts(event);
+        renderEvent(event);
+      });
+    }
+  } catch(e) {
+    console.error('Failed to fetch initial events:', e);
+  }
+
+  connectWebSocket();
+}
+
+initApp();
 
 
 
